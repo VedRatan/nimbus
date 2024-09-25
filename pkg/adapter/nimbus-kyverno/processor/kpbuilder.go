@@ -37,7 +37,6 @@ func BuildKpsFrom(logger logr.Logger, np *v1alpha1.NimbusPolicy) []kyvernov1.Pol
 	// Build KPs based on given IDs
 	var allkps []kyvernov1.Policy
 	background := true
-	skipBackgroundAdmissionReq := true
 	for _, nimbusRule := range np.Spec.NimbusRules {
 		id := nimbusRule.ID
 		if idpool.IsIdSupportedBy(id, "kyverno") {
@@ -53,8 +52,7 @@ func BuildKpsFrom(logger logr.Logger, np *v1alpha1.NimbusPolicy) []kyvernov1.Pol
 				kp.Annotations = make(map[string]string)
 				kp.Annotations["policies.kyverno.io/description"] = nimbusRule.Description
 				kp.Spec.Background = &background
-				kp.Spec.Rules[0].SkipBackgroundRequests = skipBackgroundAdmissionReq
-
+				
 				if nimbusRule.Rule.RuleAction == "Block" {
 					kp.Spec.ValidationFailureAction = kyvernov1.ValidationFailureAction("Enforce")
 				} else {
@@ -204,11 +202,16 @@ func cocoRuntimeAddition(np *v1alpha1.NimbusPolicy) ([]kyvernov1.Policy, error) 
 	var mutateTargetResourceSpecs []kyvernov1.TargetResourceSpec
 	var matchResourceFilters []kyvernov1.ResourceFilter
 	labels := np.Spec.Selector.MatchLabels
+	runtimeClass := "kata-clh"
+	params := np.Spec.NimbusRules[0].Rule.Params["runtimeClass"]
+	if params != nil {
+		runtimeClass = params[0] 
+	}
 	patchStrategicMerge := map[string]interface{}{
 		"spec": map[string]interface{}{
 			"template": map[string]interface{}{
 				"spec": map[string]interface{}{
-					"runtimeClassName": "kata-clh",
+					"runtimeClassName": runtimeClass,
 				},
 			},
 		},
@@ -226,17 +229,17 @@ func cocoRuntimeAddition(np *v1alpha1.NimbusPolicy) ([]kyvernov1.Policy, error) 
 	if err != nil {
 		errs = append(errs, err)
 	}
-	var markLabels = make(map[string]string)
+	var markLabels = make(map[string][]string)
 	for _, d := range deployments.Items {
 		for k, v := range d.GetLabels() {
 			key := k + ":" + v
-			markLabels[key] = d.GetName() // we need to add all the names of the deployments having this label
+			markLabels[key] = append(markLabels[key], d.GetName())
 		}
 	}
 	for k, v := range labels {
 		key := k + ":" + v
-		if markLabels[key] != "" {
-			deployNames = append(deployNames, markLabels[key])
+		if len(markLabels[key]) != 0 {
+			deployNames = append(deployNames, markLabels[key]...)
 		}
 	}
 

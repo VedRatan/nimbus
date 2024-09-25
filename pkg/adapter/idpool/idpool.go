@@ -17,7 +17,7 @@ const (
 	DisallowCapabilities      = "disallowCapabilities"
 	ExploitPFA                = "preventExecutionFromTempOrLogsFolders"
 	CocoWorkload              = "cocoWorkload"
-	EnsureTLS                 = "ensureTLS"
+	AssessTLS                 = "assessTLS"
 	DenyENAccess              = "denyExternalNetworkAccess"
 	VirtualPatch              = "virtualPatch"
 )
@@ -51,7 +51,7 @@ var KyvIds = []string{
 
 // k8tlsIds are IDs supported by k8tls.
 var k8tlsIds = []string{
-	EnsureTLS,
+	AssessTLS,
 }
 
 // IsIdSupportedBy determines whether a given ID is supported by a security engine.
