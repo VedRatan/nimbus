@@ -3,7 +3,10 @@
 
 name: Stable release
 
-on: workflow_dispatch
+on:
+  create:
+    tags:
+      - "v*"
 
 permissions: read-all
 
@@ -25,7 +28,7 @@ jobs:
     if: github.repository == '5GSEC/nimbus'
     strategy:
       matrix:
-        adapters: [ "nimbus-kubearmor", "nimbus-netpol", "nimbus-kyverno" ]
+        adapters: [ "nimbus-kubearmor", "nimbus-netpol", "nimbus-kyverno", "nimbus-k8tls" ]
     name: Build and push ${{ matrix.adapters }} adapter's image
     uses: ./.github/workflows/release-image.yaml
     with:
@@ -33,36 +36,38 @@ jobs:
       NAME: ${{ matrix.adapters }}
     secrets: inherit
 
-  release_helm_charts:
+  update-image-tags-in-helm-charts:
     if: github.repository == '5GSEC/nimbus'
+    needs: [ release-nimbus-image, release-adapters-image ]
     permissions:
+      pull-requests: write
       contents: write
     runs-on: ubuntu-latest
     steps:
       - name: Checkout source code
         uses: actions/checkout@v4
 
-      - name: Install Helm
-        uses: azure/setup-helm@v4
+      - name: Get tag
+        id: tag
+        run: |
+          if [ ${{ github.ref }} == "refs/heads/main" ]; then
+            echo "tag=latest" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${GITHUB_REF#refs/*/}" >> $GITHUB_OUTPUT
+          fi
 
-      - name: Generate a token
-        id: generate-token
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ vars.ACTIONS_APP_ID }}
-          private-key: ${{ secrets.ACTIONS_APP_PRIVATE_KEY }}
-          repositories: charts
+      - name: Update images tag
+        run: |
+          ./scripts/update-image-tag.sh ${{ steps.tag.outputs.tag }}
 
-      - name: Publish Helm chart
-        uses: stefanprodan/helm-gh-pages@master
+      - name: Create PR to update images tag in Helm charts
+        uses: peter-evans/create-pull-request@v7
         with:
-          # Access token which can push to a different repo in the same org
-          token: ${{ steps.generate-token.outputs.token }}
-          charts_dir: deployments/
-          # repo where charts would be published
-          owner: 5GSEC
-          repository: charts
-          branch: gh-pages
-          charts_url: https://5gsec.github.io/charts/
-          commit_username: "github-actions[bot]"
-          commit_email: "github-actions[bot]@users.noreply.github.com"
+          branch: update-helm-${{ steps.tag.outputs.tag }}
+          commit-message: "[skip ci] Update Helm Chart To ${{ steps.update.outputs.STABLE_VERSION }}"
+          committer: "github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
+          author: "github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
+          title: "[skip ci] Update Helm Chart To ${{ steps.update.outputs.STABLE_VERSION }}"
+          base: main
+          signoff: true
+          delete-branch: true
